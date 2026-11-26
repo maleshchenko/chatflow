@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "ChatFlow — ChatGPT Playlists",
+  "version": "0.1.0",
+  "description": "Organize ChatGPT conversations into ordered reading playlists.",
+  "permissions": ["storage", "sidePanel", "tabs"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": ["https://chatgpt.com/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://chatgpt.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": {
+    "default_path": "index.html"
+  },
+  "action": {
+    "default_title": "Open ChatFlow"
+  }
+}

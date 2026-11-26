@@ -1,0 +1,1 @@
+{"root":["./src/content/content.ts","./src/sidepanel/app.tsx","./src/sidepanel/main.tsx","./src/sidepanel/components/sortableconversation.tsx","./src/storage/storage.ts","./src/types/index.ts"],"version":"5.7.3"}
