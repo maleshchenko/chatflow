@@ -28,6 +28,8 @@ The production extension is generated in `dist/`.
 
 The extension action opens the side panel automatically. If Chrome does not open it on the first click, right-click the extension icon and choose **Open side panel**.
 
+<img width="1840" height="1195" alt="Screenshot 2026-11-26 at 6 26 59 PM" src="https://github.com/user-attachments/assets/dfe09f2e-a7f3-46dc-8515-ca08c87f64f5" />
+
 ## Usage
 
 1. Create a playlist in the ChatFlow side panel.
