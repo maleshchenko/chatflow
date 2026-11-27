@@ -34,7 +34,7 @@ export async function createPlaylist(name: string, description = ""): Promise<Ch
     updatedAt: now
   };
   data.playlists.unshift(playlist);
-  data.progress[playlist.id] = { completedConversationIds: [] };
+  data.progress[playlist.id] = {};
   await saveData(data);
   return data;
 }
@@ -84,11 +84,8 @@ export async function removeConversationFromPlaylist(
     playlist.updatedAt = Date.now();
   }
   const progress = data.progress[playlistId];
-  if (progress) {
-    progress.completedConversationIds = progress.completedConversationIds.filter(id => id !== conversationId);
-    if (progress.currentConversationId === conversationId) {
-      progress.currentConversationId = undefined;
-    }
+  if (progress && progress.currentConversationId === conversationId) {
+    progress.currentConversationId = undefined;
   }
   await saveData(data);
   return data;
@@ -110,7 +107,7 @@ export async function updateProgress(
   updater: (progress: ReadingProgress) => ReadingProgress
 ): Promise<ChatFlowData> {
   const data = await loadData();
-  const current = data.progress[playlistId] ?? { completedConversationIds: [] };
+  const current = data.progress[playlistId] ?? {};
   data.progress[playlistId] = updater(current);
   await saveData(data);
   return data;

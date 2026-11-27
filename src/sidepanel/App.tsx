@@ -14,7 +14,7 @@ import {
 } from "@dnd-kit/sortable";
 import {
   BookOpen, ChevronLeft, ChevronRight, CirclePlus, ListMusic,
-  Pencil, Play, Plus, Search, Trash2, X
+  Pencil, Play, Plus, Search, Square, Trash2, X
 } from "lucide-react";
 import SortableConversation from "./components/SortableConversation";
 import {
@@ -37,6 +37,13 @@ export default function App() {
   const [currentConversation, setCurrentConversation] = useState<CurrentConversation | null>(null);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [autoplay, setAutoplay] = useState(true);
+  const [playbackStatus, setPlaybackStatus] = useState<{
+    conversationId: string;
+    currentPart: number;
+    totalParts: number;
+  } | null>(null);
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const refresh = useCallback(async () => {
@@ -65,6 +72,55 @@ export default function App() {
     }
   }, []);
 
+  // Track sidepanel open status and load autoplay preference
+  useEffect(() => {
+    void chrome.storage.local.set({ chatflowSidepanelOpen: true });
+    void chrome.storage.local.get(["chatflowAutoplay"]).then(res => {
+      if (res.chatflowAutoplay !== undefined) {
+        setAutoplay(Boolean(res.chatflowAutoplay));
+      }
+    });
+
+    return () => {
+      void chrome.storage.local.set({ chatflowSidepanelOpen: false });
+    };
+  }, []);
+
+  const toggleAutoplay = () => {
+    setAutoplay(prev => {
+      const next = !prev;
+      void chrome.storage.local.set({ chatflowAutoplay: next });
+      return next;
+    });
+  };
+
+  const selectedPlaylist = data.playlists.find(item => item.id === selectedPlaylistId) ?? null;
+  const selectedProgress = selectedPlaylistId
+    ? data.progress[selectedPlaylistId] ?? {}
+    : {};
+
+  const handleConversationFinished = useCallback(async (conversationId: string) => {
+    setPlaybackStatus(null);
+    const freshData = await loadData();
+    let targetPlaylist = freshData.playlists.find(p => p.conversationIds.includes(conversationId));
+    if (!targetPlaylist && selectedPlaylistId) {
+      targetPlaylist = freshData.playlists.find(p => p.id === selectedPlaylistId);
+    }
+    if (!targetPlaylist) return;
+
+    // Auto-advance if autoplay is enabled
+    const res = await chrome.storage.local.get(["chatflowAutoplay"]);
+    const shouldAutoplay = res.chatflowAutoplay !== false;
+    if (shouldAutoplay) {
+      const ids = targetPlaylist.conversationIds;
+      const idx = ids.indexOf(conversationId);
+      if (idx !== -1 && idx + 1 < ids.length) {
+        const nextId = ids[idx + 1];
+        await navigateTo(nextId);
+      }
+    }
+  }, [selectedPlaylistId]);
+
   useEffect(() => {
     void refresh();
     void detectCurrentConversation();
@@ -77,20 +133,31 @@ export default function App() {
       if (changeInfo.url || changeInfo.status === "complete") void detectCurrentConversation();
     };
 
+    const onRuntimeMessage = (message: any) => {
+      if (message?.type === "CHATFLOW_PLAYBACK_PROGRESS") {
+        setPlaybackStatus({
+          conversationId: message.conversationId,
+          currentPart: message.currentPart,
+          totalParts: message.totalParts
+        });
+      } else if (message?.type === "CHATFLOW_CONVERSATION_FINISHED") {
+        void handleConversationFinished(message.conversationId);
+      }
+    };
+
     chrome.storage.onChanged.addListener(onChanged);
     chrome.tabs.onActivated.addListener(onActivated);
     chrome.tabs.onUpdated.addListener(onUpdated);
+    chrome.runtime.onMessage.addListener(onRuntimeMessage);
+
     return () => {
       chrome.storage.onChanged.removeListener(onChanged);
       chrome.tabs.onActivated.removeListener(onActivated);
       chrome.tabs.onUpdated.removeListener(onUpdated);
+      chrome.runtime.onMessage.removeListener(onRuntimeMessage);
     };
-  }, [refresh, detectCurrentConversation]);
+  }, [refresh, detectCurrentConversation, handleConversationFinished]);
 
-  const selectedPlaylist = data.playlists.find(item => item.id === selectedPlaylistId) ?? null;
-  const selectedProgress = selectedPlaylistId
-    ? data.progress[selectedPlaylistId] ?? { completedConversationIds: [] }
-    : { completedConversationIds: [] };
   const playlistConversations = useMemo(() => {
     if (!selectedPlaylist) return [];
     return selectedPlaylist.conversationIds
@@ -98,10 +165,6 @@ export default function App() {
       .filter((item): item is Conversation => Boolean(item))
       .filter(item => item.title.toLowerCase().includes(search.toLowerCase()));
   }, [selectedPlaylist, data.conversations, search]);
-
-  const completedCount = selectedPlaylist
-    ? selectedPlaylist.conversationIds.filter(id => selectedProgress.completedConversationIds.includes(id)).length
-    : 0;
 
   async function handleCreatePlaylist() {
     const name = window.prompt("Playlist name");
@@ -129,146 +192,160 @@ export default function App() {
   }
 
   async function waitForTabComplete(
-  tabId: number,
-  timeoutMs = 30_000
-): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    let settled = false;
+    tabId: number,
+    timeoutMs = 30_000
+  ): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
 
-    const finish = (error?: Error) => {
-      if (settled) return;
+      const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeout);
+        chrome.tabs.onUpdated.removeListener(listener);
 
-      settled = true;
-
-      window.clearTimeout(timeout);
-
-      chrome.tabs.onUpdated.removeListener(listener);
-
-      if (error) {
-        reject(error);
-      } else {
-        resolve();
-      }
-    };
-
-    const listener = (
-      updatedTabId: number,
-      changeInfo: chrome.tabs.TabChangeInfo
-    ) => {
-      if (
-        updatedTabId === tabId &&
-        changeInfo.status === "complete"
-      ) {
-        finish();
-      }
-    };
-
-    const timeout = window.setTimeout(() => {
-      finish(
-        new Error("Timed out waiting for ChatGPT to load.")
-      );
-    }, timeoutMs);
-
-    chrome.tabs.onUpdated.addListener(listener);
-
-    void chrome.tabs.get(tabId).then(tab => {
-      if (tab.status === "complete") {
-        finish();
-      }
-    }).catch(error => {
-      finish(
-        error instanceof Error
-          ? error
-          : new Error("Could not read tab status.")
-      );
-    });
-  });
-}
-
-async function activateReadAloud(tabId: number) {
-  await waitForTabComplete(tabId).catch(error => {
-    console.warn("ChatFlow tab-load wait:", error);
-  });
-
-  const connectionDeadline = Date.now() + 20_000;
-
-  while (Date.now() < connectionDeadline) {
-    try {
-      const result = await chrome.tabs.sendMessage(
-        tabId,
-        {
-          type: "CHATFLOW_READ_ALOUD"
+        if (error) {
+          reject(error);
+        } else {
+          resolve();
         }
-      );
+      };
 
-      if (result?.ok) {
-        console.log("ChatFlow: Read Aloud activated.");
-        return;
+      const listener = (
+        updatedTabId: number,
+        changeInfo: chrome.tabs.TabChangeInfo
+      ) => {
+        if (
+          updatedTabId === tabId &&
+          changeInfo.status === "complete"
+        ) {
+          finish();
+        }
+      };
+
+      const timeout = window.setTimeout(() => {
+        finish(
+          new Error("Timed out waiting for ChatGPT to load.")
+        );
+      }, timeoutMs);
+
+      chrome.tabs.onUpdated.addListener(listener);
+
+      void chrome.tabs.get(tabId).then(tab => {
+        if (tab.status === "complete") {
+          finish();
+        }
+      }).catch(error => {
+        finish(
+          error instanceof Error
+            ? error
+            : new Error("Could not read tab status.")
+        );
+      });
+    });
+  }
+
+  async function activateReadAloud(tabId: number) {
+    await waitForTabComplete(tabId).catch(error => {
+      console.warn("ChatFlow tab-load wait:", error);
+    });
+
+    const connectionDeadline = Date.now() + 20_000;
+
+    while (Date.now() < connectionDeadline) {
+      try {
+        const result = await chrome.tabs.sendMessage(
+          tabId,
+          {
+            type: "CHATFLOW_READ_ALOUD"
+          }
+        );
+
+        if (result?.ok) {
+          console.log("ChatFlow: Read Aloud activated.");
+          return;
+        }
+
+        await new Promise(resolve =>
+          window.setTimeout(resolve, 500)
+        );
+      } catch {
+        await new Promise(resolve =>
+          window.setTimeout(resolve, 500)
+        );
+      }
+    }
+
+    console.warn(
+      "ChatFlow: Could not connect to ChatGPT content script."
+    );
+  }
+
+  async function stopPlayback() {
+    setPlaybackStatus(null);
+    try {
+      const chatGptTabs = await chrome.tabs.query({ url: "https://chatgpt.com/*" });
+      for (const tab of chatGptTabs) {
+        if (tab.id) {
+          chrome.tabs.sendMessage(tab.id, { type: "CHATFLOW_STOP" }).catch(() => {});
+        }
       }
 
-      console.warn(
-        "ChatFlow could not activate Read Aloud:",
-        result?.reason
-      );
-
-      return;
-    } catch {
-      await new Promise(resolve =>
-        window.setTimeout(resolve, 500)
-      );
+      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (activeTab?.id) {
+        chrome.tabs.sendMessage(activeTab.id, { type: "CHATFLOW_STOP" }).catch(() => {});
+      }
+    } catch (err) {
+      console.warn("ChatFlow stopPlayback error:", err);
     }
   }
 
-  console.warn(
-    "ChatFlow: Could not connect to ChatGPT content script."
-  );
-}
+  async function navigateTo(conversationId: string) {
+    if (!selectedPlaylist) return;
 
-async function navigateTo(conversationId: string) {
-  if (!selectedPlaylist) return;
+    const conversation = data.conversations[conversationId];
+    if (!conversation) return;
 
-  const conversation = data.conversations[conversationId];
+    setPlaybackStatus(null);
 
-  if (!conversation) return;
+    await updateProgress(
+      selectedPlaylist.id,
+      progress => ({
+        ...progress,
+        currentConversationId: conversationId,
+        lastVisitedAt: Date.now()
+      })
+    );
 
-  await updateProgress(
-    selectedPlaylist.id,
-    progress => ({
-      ...progress,
-      currentConversationId: conversationId,
-      lastVisitedAt: Date.now()
-    })
-  );
-
-  const [activeTab] = await chrome.tabs.query({
-    active: true,
-    lastFocusedWindow: true
-  });
-
-  let targetTabId: number;
-
-  if (
-    activeTab?.id &&
-    activeTab.url?.startsWith("https://chatgpt.com/")
-  ) {
-    targetTabId = activeTab.id;
-
-    await chrome.tabs.update(targetTabId, {
-      url: conversation.url
-    });
-  } else {
-    const createdTab = await chrome.tabs.create({
-      url: conversation.url,
-      active: true
+    const [activeTab] = await chrome.tabs.query({
+      active: true,
+      lastFocusedWindow: true
     });
 
-    if (!createdTab.id) return;
+    let targetTabId: number;
 
-    targetTabId = createdTab.id;
+    if (
+      activeTab?.id &&
+      activeTab.url?.startsWith("https://chatgpt.com/")
+    ) {
+      targetTabId = activeTab.id;
+
+      await chrome.tabs.update(targetTabId, {
+        url: conversation.url
+      });
+    } else {
+      const createdTab = await chrome.tabs.create({
+        url: conversation.url,
+        active: true
+      });
+
+      if (!createdTab.id) return;
+
+      targetTabId = createdTab.id;
+    }
+
+    await activateReadAloud(targetTabId);
   }
-
-  await activateReadAloud(targetTabId);
-}
 
   async function navigateRelative(direction: -1 | 1) {
     if (!selectedPlaylist || selectedPlaylist.conversationIds.length === 0) return;
@@ -279,16 +356,6 @@ async function navigateTo(conversationId: string) {
       ? (direction === 1 ? 0 : ids.length - 1)
       : Math.max(0, Math.min(ids.length - 1, currentIndex + direction));
     await navigateTo(ids[nextIndex]);
-  }
-
-  async function toggleCompleted(conversationId: string) {
-    if (!selectedPlaylist) return;
-    setData(await updateProgress(selectedPlaylist.id, progress => {
-      const completed = new Set(progress.completedConversationIds);
-      if (completed.has(conversationId)) completed.delete(conversationId);
-      else completed.add(conversationId);
-      return { ...progress, completedConversationIds: [...completed] };
-    }));
   }
 
   async function handleDragEnd(event: DragEndEvent) {
@@ -303,8 +370,10 @@ async function navigateTo(conversationId: string) {
   const continueConversation = selectedPlaylist
     ? selectedProgress.currentConversationId && selectedPlaylist.conversationIds.includes(selectedProgress.currentConversationId)
       ? selectedProgress.currentConversationId
-      : selectedPlaylist.conversationIds.find(id => !selectedProgress.completedConversationIds.includes(id))
+      : selectedPlaylist.conversationIds[0]
     : undefined;
+
+  const isAnyPlaying = Boolean(playbackStatus);
 
   if (loading) return <div className="loading">Loading ChatFlow…</div>;
 
@@ -372,11 +441,27 @@ async function navigateTo(conversationId: string) {
               <span className="continue-playlist">{selectedPlaylist.name}</span>
               <strong>{data.conversations[continueConversation]?.title ?? "Conversation"}</strong>
               <span className="progress-caption">
-                {completedCount} of {selectedPlaylist.conversationIds.length} completed
+                {playbackStatus
+                  ? `Reading response ${playbackStatus.currentPart} of ${playbackStatus.totalParts}`
+                  : `${selectedPlaylist.conversationIds.length} ${selectedPlaylist.conversationIds.length === 1 ? "conversation" : "conversations"}`}
               </span>
             </div>
-            <button className="play-button" title="Continue reading" onClick={() => void navigateTo(continueConversation)}>
-              <Play size={17} fill="currentColor" />
+            <button
+              className={`play-button ${isAnyPlaying ? "stop-active" : ""}`}
+              title={isAnyPlaying ? "Stop reading" : "Continue reading"}
+              onClick={() => {
+                if (isAnyPlaying) {
+                  void stopPlayback();
+                } else {
+                  void navigateTo(continueConversation);
+                }
+              }}
+            >
+              {isAnyPlaying ? (
+                <Square size={15} fill="currentColor" />
+              ) : (
+                <Play size={17} fill="currentColor" />
+              )}
             </button>
           </div>
         ) : (
@@ -421,7 +506,7 @@ async function navigateTo(conversationId: string) {
                 <div className="playlist-title-row">
                   <div className="playlist-title-copy">
                     <h3>{selectedPlaylist.name}</h3>
-                    <span>{selectedPlaylist.conversationIds.length} conversations · {completedCount} completed</span>
+                    <span>{selectedPlaylist.conversationIds.length} {selectedPlaylist.conversationIds.length === 1 ? "conversation" : "conversations"}</span>
                   </div>
                   <div className="playlist-tools">
                     <button className="icon-button" title="Rename playlist" onClick={() => void handleRename(selectedPlaylist)}><Pencil size={15} /></button>
@@ -450,10 +535,9 @@ async function navigateTo(conversationId: string) {
                             key={conversation.id}
                             conversation={conversation}
                             number={selectedPlaylist.conversationIds.indexOf(conversation.id) + 1}
-                            completed={selectedProgress.completedConversationIds.includes(conversation.id)}
                             active={currentConversation?.id === conversation.id}
+                            playbackPart={playbackStatus && playbackStatus.conversationId === conversation.id ? playbackStatus : null}
                             onOpen={() => void navigateTo(conversation.id)}
-                            onToggleCompleted={() => void toggleCompleted(conversation.id)}
                             onRemove={() => void removeConversationFromPlaylist(selectedPlaylist.id, conversation.id).then(setData)}
                           />
                         ))}
@@ -464,6 +548,18 @@ async function navigateTo(conversationId: string) {
                 <div className="player-controls">
                   <button className="secondary-button" onClick={() => void navigateRelative(-1)} disabled={selectedPlaylist.conversationIds.length === 0}>
                     <ChevronLeft size={16} /> Previous
+                  </button>
+                  {playbackStatus && (
+                    <button className="secondary-button stop-button" onClick={() => void stopPlayback()} title="Stop reading">
+                      <Square size={13} fill="currentColor" /> Stop
+                    </button>
+                  )}
+                  <button
+                    className={`autoplay-toggle ${autoplay ? "is-active" : ""}`}
+                    onClick={toggleAutoplay}
+                    title={autoplay ? "Autoplay next conversation: ON" : "Autoplay next conversation: OFF"}
+                  >
+                    Autoplay {autoplay ? "ON" : "OFF"}
                   </button>
                   <button className="primary-button next-button" onClick={() => void navigateRelative(1)} disabled={selectedPlaylist.conversationIds.length === 0}>
                     Next <ChevronRight size={16} />

@@ -75,14 +75,17 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .conversation-main { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; padding: 0; border: 0; text-align: left; color: #d7d7df; background: transparent; }
 .conversation-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
 .reading-label { color: #b9a7f5; font-size: 8px; font-weight: 800; letter-spacing: .6px; }
-.complete-button { display: grid; place-items: center; flex: 0 0 18px; width: 18px; height: 18px; padding: 0; border: 1px solid #555660; border-radius: 50%; background: transparent; color: #17151d; }
-.complete-button span { width: 4px; height: 4px; border-radius: 50%; background: #777984; }
-.complete-button.completed { border-color: #a78bfa; background: #a78bfa; }
 .remove-button { display: grid; place-items: center; padding: 4px; border: 0; color: #666772; background: transparent; opacity: 0; }
 .conversation-row:hover .remove-button { opacity: 1; }
 .remove-button:hover { color: #fca5a5; }
 .playlist-empty { padding: 20px 8px; text-align: center; color: var(--muted); font-size: 10px; line-height: 1.5; }
-.player-controls { display: flex; justify-content: space-between; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.player-controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.autoplay-toggle { display: inline-flex; align-items: center; gap: 4px; padding: 7px 9px; border: 1px solid #35363e; border-radius: 8px; background: #1a1b22; color: #92939d; font-size: 10px; font-weight: 600; cursor: pointer; }
+.autoplay-toggle.is-active { border-color: #5b4a82; background: #261f38; color: #c4b5fd; }
+.stop-button { color: #fca5a5; border-color: rgba(239, 68, 68, 0.4); }
+.stop-button:hover:not(:disabled) { background: rgba(239, 68, 68, 0.15); }
+.play-button.stop-active { background: #f87171; color: #1a1424; }
+.play-button.stop-active:hover { background: #fca5a5; }
 .next-button { margin-left: auto; }
 .empty-library { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 25px 16px; border: 1px dashed #34353d; border-radius: 11px; color: #8d8e99; text-align: center; }
 .empty-library strong { color: #d8d8df; font-size: 12px; }

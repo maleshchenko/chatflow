@@ -1,20 +1,19 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Check, GripVertical, Trash2 } from "lucide-react";
+import { GripVertical, Trash2 } from "lucide-react";
 import type { Conversation } from "../../types";
 
 interface Props {
   conversation: Conversation;
   number: number;
-  completed: boolean;
   active: boolean;
+  playbackPart?: { currentPart: number; totalParts: number } | null;
   onOpen: () => void;
-  onToggleCompleted: () => void;
   onRemove: () => void;
 }
 
 export default function SortableConversation({
-  conversation, number, completed, active, onOpen, onToggleCompleted, onRemove
+  conversation, number, active, playbackPart, onOpen, onRemove
 }: Props) {
   const {
     attributes, listeners, setNodeRef, transform, transition, isDragging
@@ -32,14 +31,11 @@ export default function SortableConversation({
       <span className="conversation-number">{String(number).padStart(2, "0")}</span>
       <button className="conversation-main" onClick={onOpen} title={conversation.title}>
         <span className="conversation-name">{conversation.title}</span>
-        {active && <span className="reading-label">OPEN</span>}
-      </button>
-      <button
-        className={`complete-button ${completed ? "completed" : ""}`}
-        title={completed ? "Mark as not completed" : "Mark as completed"}
-        onClick={onToggleCompleted}
-      >
-        {completed ? <Check size={14} /> : <span />}
+        {active && (
+          <span className="reading-label">
+            {playbackPart ? `PART ${playbackPart.currentPart}/${playbackPart.totalParts}` : "OPEN"}
+          </span>
+        )}
       </button>
       <button className="remove-button" title="Remove from playlist" onClick={onRemove}>
         <Trash2 size={14} />

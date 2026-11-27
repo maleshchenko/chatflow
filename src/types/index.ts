@@ -15,7 +15,6 @@ export interface Playlist {
 }
 
 export interface ReadingProgress {
-  completedConversationIds: string[];
   currentConversationId?: string;
   lastVisitedAt?: number;
 }
@@ -30,4 +29,11 @@ export interface CurrentConversation {
   id: string;
   title: string;
   url: string;
+}
+
+export interface PlaybackStatus {
+  conversationId: string;
+  currentPart: number;
+  totalParts: number;
+  status: "idle" | "reading" | "stopped";
 }
