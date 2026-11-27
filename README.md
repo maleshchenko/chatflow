@@ -38,7 +38,6 @@ The extension action opens the side panel automatically. If Chrome does not open
 4. Add more conversations to the same or other playlists.
 5. Reorder items using the grip icon.
 6. Click a conversation to navigate to it, or use **Previous** and **Next**.
-7. Mark items complete using the circular check control.
 
 ## Data and privacy
 
