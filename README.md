@@ -28,7 +28,7 @@ The production extension is generated in `dist/`.
 
 The extension action opens the side panel automatically. If Chrome does not open it on the first click, right-click the extension icon and choose **Open side panel**.
 
-<img width="1840" height="1195" alt="Screenshot 2026-11-27 at 6 56 27 AM" src="https://github.com/user-attachments/assets/a16fc867-8f43-45af-a6b8-ecba83fa893a" />
+<img width="1837" height="1195" alt="Screenshot 2026-11-27 at 9 24 45 AM" src="https://github.com/user-attachments/assets/d4055f36-8df1-4478-bfeb-e8c0c9b2b903" />
 
 ## Usage
 
